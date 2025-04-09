@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Analysis Tool</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .result-card {
+            display: none;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .sentiment-indicator {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            font-weight: bold;
+        }
+        .error-message {
+            color: #dc3545;
+            margin-top: 10px;
+            display: none;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Text Analysis Tool</h1>
+        
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Enter Your Text</h5>
+                <textarea id="textInput" class="form-control mb-3" rows="6" placeholder="Type or paste your text here..."></textarea>
+                <button id="analyzeBtn" class="btn btn-primary">Analyze Text</button>
+                <div id="errorMessage" class="error-message"></div>
+            </div>
+        </div>
+
+        <div class="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+
+        <div class="result-card card">
+            <div class="card-body">
+                <h5 class="card-title">Analysis Results</h5>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-subtitle mb-2 text-muted">Basic Statistics</h6>
+                                <p>Word Count: <span id="wordCount">-</span></p>
+                                <p>Sentence Count: <span id="sentenceCount">-</span></p>
+                                <p>Paragraph Count: <span id="paragraphCount">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-subtitle mb-2 text-muted">Sentiment Analysis</h6>
+                                <div id="sentimentIndicator" class="sentiment-indicator mb-2"></div>
+                                <p>Polarity: <span id="polarity">-</span></p>
+                                <p>Subjectivity: <span id="subjectivity">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">Word Distribution</h6>
+                        <div class="chart-container">
+                            <canvas id="wordChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">Top Words</h6>
+                        <div id="topWords"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let wordChart = null;
+
+        document.getElementById('analyzeBtn').addEventListener('click', async () => {
+            try {
+                const textInput = document.getElementById('textInput');
+                const errorMessage = document.getElementById('errorMessage');
+                const inputText = textInput.value.trim();
+                
+                if (!inputText) {
+                    errorMessage.textContent = 'Please enter some text to analyze';
+                    errorMessage.style.display = 'block';
+                    return;
+                }
+
+                // Hide any previous error message
+                errorMessage.style.display = 'none';
+                
+                // Show loading
+                document.querySelector('.loading').style.display = 'block';
+                document.querySelector('.result-card').style.display = 'none';
+
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: inputText }),
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'An error occurred during analysis');
+                }
+                
+                // Update results
+                document.getElementById('wordCount').textContent = data.word_count;
+                document.getElementById('sentenceCount').textContent = data.sentence_count;
+                document.getElementById('paragraphCount').textContent = data.paragraph_count;
+                document.getElementById('polarity').textContent = data.sentiment.polarity;
+                document.getElementById('subjectivity').textContent = data.sentiment.subjectivity;
+
+                // Update sentiment indicator
+                const sentimentIndicator = document.getElementById('sentimentIndicator');
+                const polarity = data.sentiment.polarity;
+                let sentimentColor, sentimentText;
+                if (polarity > 0.2) {
+                    sentimentColor = '#28a745';
+                    sentimentText = 'Positive';
+                } else if (polarity < -0.2) {
+                    sentimentColor = '#dc3545';
+                    sentimentText = 'Negative';
+                } else {
+                    sentimentColor = '#ffc107';
+                    sentimentText = 'Neutral';
+                }
+                sentimentIndicator.style.backgroundColor = sentimentColor;
+                sentimentIndicator.textContent = sentimentText;
+
+                // Update top words
+                const topWordsDiv = document.getElementById('topWords');
+                topWordsDiv.innerHTML = Object.entries(data.top_words)
+                    .map(([word, count]) => `<span class="badge bg-secondary me-2 mb-2">${word}: ${count}</span>`)
+                    .join('');
+
+                // Update pie chart
+                const ctx = document.getElementById('wordChart').getContext('2d');
+                
+                // Destroy existing chart if it exists
+                if (wordChart) {
+                    wordChart.destroy();
+                }
+
+                // Create new chart
+                wordChart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: Object.keys(data.top_words),
+                        datasets: [{
+                            data: Object.values(data.top_words),
+                            backgroundColor: [
+                                '#FF6384',
+                                '#36A2EB',
+                                '#FFCE56',
+                                '#4BC0C0',
+                                '#9966FF'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Word Distribution'
+                            }
+                        }
+                    }
+                });
+
+                // Show results
+                document.querySelector('.result-card').style.display = 'block';
+            } catch (error) {
+                const errorMessage = document.getElementById('errorMessage');
+                errorMessage.textContent = error.message;
+                errorMessage.style.display = 'block';
+                console.error('Error:', error);
+            } finally {
+                document.querySelector('.loading').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
